@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ctxbeacon"
+version = "0.1.0"
+description = "A local-first AI agent harness that reveals what context compaction keeps or loses, detects potentially missing instructions, and tracks provider failovers."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "tiktoken>=0.7.0",
+    "httpx>=0.27.0",
+]
+
+[project.scripts]
+ctxbeacon = "ctxbeacon.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
