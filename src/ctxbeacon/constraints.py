@@ -80,8 +80,13 @@ class ConstraintChecker:
             )
 
         matched_markers: List[str] = []
+        # Filter for instructions and summaries, excluding raw tool calls and tool execution outputs
+        relevant_messages = [
+            m for m in context_messages
+            if m.get("role") in ("system", "user") or (m.get("role") != "tool" and not m.get("tool_calls"))
+        ]
         combined_text = " ".join(
-            str(m.get("content", "")) for m in context_messages if m.get("content")
+            str(m.get("content", "")) for m in relevant_messages if m.get("content")
         ).lower()
 
         for marker in constraint.marker_terms:

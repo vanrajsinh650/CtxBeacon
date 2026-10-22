@@ -6,6 +6,7 @@ from ctxbeacon.providers.base import (
     ProviderUsage,
     ToolCall,
 )
+from ctxbeacon.providers.bharatcode import BharatCodeProvider
 from ctxbeacon.providers.fallback import FallbackProvider
 from ctxbeacon.providers.mock import MockProvider
 
@@ -16,4 +17,5 @@ __all__ = [
     "ToolCall",
     "MockProvider",
     "FallbackProvider",
+    "BharatCodeProvider",
 ]

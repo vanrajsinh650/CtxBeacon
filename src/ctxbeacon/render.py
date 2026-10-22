@@ -162,7 +162,7 @@ def render_compaction_diff(
             lines.append("  EVIDENCE")
             lines.append(f"    Original message: {mf.get('evidence_message_id', 'unknown')}")
             lines.append(f"    Compaction event: {comp_evt_id}")
-            kw_status = "absent" if mf.get("status") in ("possibly_missing", "possible_violation") else "matched"
+            kw_status = "absent" if not mf.get("matched_markers") else f"matched ({', '.join(mf['matched_markers'])})"
             lines.append(f"    Keyword match: {kw_status}")
             lines.append(f"    Snapshot: {snap_status}")
             if mf.get("details"):

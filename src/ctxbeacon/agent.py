@@ -105,7 +105,18 @@ class AgentLoop:
         tool_call_id: Optional[str] = None,
         msg_id: Optional[str] = None,
     ) -> AgentMessage:
-        mid = msg_id or self.next_message_id()
+        if msg_id:
+            mid = msg_id
+            if mid.startswith("msg-"):
+                try:
+                    num = int(mid.split("-")[1])
+                    if num > self._msg_counter:
+                        self._msg_counter = num
+                except ValueError:
+                    pass
+        else:
+            mid = self.next_message_id()
+
         msg = AgentMessage(
             id=mid,
             role=role,
@@ -136,9 +147,10 @@ class AgentLoop:
             )
         )
 
-        # 2. Add system and initial user message
-        self.add_message("system", self.system_instruction)
-        self.add_message("user", task)
+        # 2. Add system and initial user message if starting fresh
+        if not self.messages:
+            self.add_message("system", self.system_instruction)
+            self.add_message("user", task)
 
         termination_reason = "completed"
 

@@ -1,0 +1,17 @@
+{
+  "task": "Refactor session authentication to support OAuth2 tokens. CONSTRAINT: Never modify files under migrations/.",
+  "constraints": [
+    {
+      "text": "Never modify files under migrations/",
+      "marker_terms": [
+        "migrations",
+        "migrations/",
+        "never modify files under migrations"
+      ],
+      "prohibited_paths": [
+        "migrations",
+        "migrations/"
+      ]
+    }
+  ]
+}

@@ -9,6 +9,11 @@ from typing import List, Optional
 
 from ctxbeacon.ledger import Ledger
 from ctxbeacon.render import render_compaction_diff
+from ctxbeacon.scenarios import (
+    run_bharatcode_experiments,
+    run_clean_scenario,
+    run_simulated_compaction_loss,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -54,6 +59,38 @@ def build_parser() -> argparse.ArgumentParser:
         help="Override configured context token budget",
     )
 
+    # Command: demo
+    demo_parser = subparsers.add_parser("demo", help="Run demonstration scenarios")
+    demo_parser.add_argument(
+        "--scenario",
+        choices=["compaction-loss", "clean", "real-experiments"],
+        default="compaction-loss",
+        help="Scenario to run: compaction-loss (simulated), clean (simulated), real-experiments (BharatCode live)",
+    )
+    demo_parser.add_argument(
+        "--workspace",
+        type=str,
+        default="examples/demo_workspace",
+        help="Target workspace directory for sandboxed tools (default: examples/demo_workspace)",
+    )
+    demo_parser.add_argument(
+        "--ledger",
+        type=str,
+        default=None,
+        help="Output JSONL ledger path (default: ledger/ledger_<scenario>.jsonl)",
+    )
+    demo_parser.add_argument(
+        "--snapshot",
+        action="store_true",
+        help="Enable full context snapshot storage under ledger/snapshots/ (opt-in)",
+    )
+    demo_parser.add_argument(
+        "--api-key",
+        type=str,
+        default=None,
+        help="Optional BharatCode API key for real-experiments",
+    )
+
     return parser
 
 
@@ -83,6 +120,69 @@ def handle_diff(args: argparse.Namespace) -> int:
     return 0 if not output.startswith("Error:") else 1
 
 
+def handle_demo(args: argparse.Namespace) -> int:
+    scenario = args.scenario
+    workspace = args.workspace
+    snapshot = args.snapshot
+
+    if scenario == "compaction-loss":
+        ledger_p = args.ledger or "ledger/ledger_simulated_loss.jsonl"
+        sys.stdout.write("============================================================\n")
+        sys.stdout.write("Running Scenario B: Deterministic Simulated Compaction Loss\n")
+        sys.stdout.write("NOTE: This is a controlled simulation testing CtxBeacon's\n")
+        sys.stdout.write("detection engine. All events are marked simulation=true.\n")
+        sys.stdout.write("============================================================\n\n")
+
+        res = run_simulated_compaction_loss(
+            workspace_dir=workspace,
+            ledger_path=ledger_p,
+            enable_snapshots=snapshot,
+        )
+        sys.stdout.write(res["diff_output"] + "\n\n")
+        sys.stdout.write(f"Scenario complete. Ledger recorded to: {res['ledger_path']}\n")
+        return 0
+
+    elif scenario == "clean":
+        ledger_p = args.ledger or "ledger/ledger_clean.jsonl"
+        sys.stdout.write("============================================================\n")
+        sys.stdout.write("Running Scenario: Clean Compaction (Constraints Preserved)\n")
+        sys.stdout.write("============================================================\n\n")
+
+        res = run_clean_scenario(
+            workspace_dir=workspace,
+            ledger_path=ledger_p,
+            enable_snapshots=snapshot,
+        )
+        sys.stdout.write(res["diff_output"] + "\n\n")
+        sys.stdout.write(f"Scenario complete. Ledger recorded to: {res['ledger_path']}\n")
+        return 0
+
+    elif scenario == "real-experiments":
+        ledger_p = args.ledger or "ledger/ledger_bharatcode_experiments.jsonl"
+        res = run_bharatcode_experiments(
+            api_key=args.api_key,
+            ledger_path=ledger_p,
+            enable_snapshots=snapshot,
+        )
+        if res.get("status") == "pending_credentials":
+            sys.stdout.write(res["message"] + "\n")
+            return 0
+
+        sys.stdout.write("============================================================\n")
+        sys.stdout.write("Scenario A: Real BharatCode Compaction Experiments Results\n")
+        sys.stdout.write("============================================================\n\n")
+        sys.stdout.write(f"Completed genuine runs: {res['completed_runs']}/5\n")
+        sys.stdout.write(f"Constraints preserved : {res['preserved_count']}\n")
+        sys.stdout.write(f"Constraints missing   : {res['missing_count']}\n")
+        sys.stdout.write(f"Blocked / errored     : {res['blocked_count']}\n")
+        sys.stdout.write(f"Preservation rate     : {res['preservation_rate']:.1f}%\n")
+        sys.stdout.write(f"Total prompt tokens   : {res['total_prompt_tokens']}\n")
+        sys.stdout.write(f"Total comp. tokens    : {res['total_completion_tokens']}\n\n")
+        return 0
+
+    return 0
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -95,6 +195,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         return handle_validate(args)
     elif args.subcommand == "diff":
         return handle_diff(args)
+    elif args.subcommand == "demo":
+        return handle_demo(args)
 
     return 0
 
