@@ -1,0 +1,40 @@
+# CtxBeacon — BharatCode Integration Details
+# BharatCode Build League Hackathon Submission
+
+Project Name: CtxBeacon
+Repository: https://github.com/vanrajsinh650/CtxBeacon
+Tagline: See what your agent kept—and what it lost.
+
+================================================================================
+1. Integration Architecture
+================================================================================
+CtxBeacon integrates with the BharatCode API to audit context compaction, detect
+lost requirements, and track model inference fidelity.
+
+- Endpoint: https://bharatcode.ai/api/model/v1/responses
+- Primary Model: qwen-3.8-27b
+- Authentication: Bearer token via BHARATCODE_API_KEY environment variable
+- Request Payload:
+    {
+      "model": "qwen-3.8-27b",
+      "input": [...],
+      "instructions": "...",
+      "tools": [...],
+      "store": false
+    }
+- Adapter Implementation: src/ctxbeacon/providers/bharatcode.py
+
+================================================================================
+2. Current Status & Verification
+================================================================================
+- Phase A & B Complete: The complete agent loop, append-only ledger, context
+  budget estimator (cl100k_base), compaction transformer, deterministic diff
+  renderer, constraint-loss auditor, and fallback mechanism are fully implemented
+  and verified with 45 automated unit and integration tests.
+- Mock Verification: The BharatCode adapter has been thoroughly tested using
+  mocked HTTP transports covering 200 text completions, structured function/tool
+  calls, 401 unauthorized errors, and 429 rate limits with Retry-After headers.
+- Credentials Privacy: API keys are strictly externalized and never committed,
+  logged, hashed, or embedded in ledger events.
+- Live Testing Readiness: Phase D smoke tests are prepared. Live requests are
+  executed only when the user supplies a genuine authenticated BHARATCODE_API_KEY.
