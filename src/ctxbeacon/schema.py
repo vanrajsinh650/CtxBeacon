@@ -242,7 +242,7 @@ def create_event(
         "status": status,
     }
     for k, v in kwargs.items():
-        if v is not None:
+        if v is not None or k in ("snapshot_ref", "summary_ref", "turn"):
             event[k] = v
 
     validate_event(event)

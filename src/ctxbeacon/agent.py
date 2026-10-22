@@ -1,12 +1,13 @@
-"""Agent execution loop for CtxBeacon."""
+"""Agent execution loop for CtxBeacon with integrated context compaction and ledger instrumentation."""
 
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
+from ctxbeacon.compaction import Compactor
 from ctxbeacon.ledger import Ledger
 from ctxbeacon.providers.base import BaseProvider, ProviderResponse, ToolCall
 from ctxbeacon.schema import (
@@ -15,6 +16,7 @@ from ctxbeacon.schema import (
     create_event,
     generate_run_id,
 )
+from ctxbeacon.tokens import count_context_tokens
 from ctxbeacon.tools import DEMO_TOOLS_SCHEMA, ToolExecutionResult, WorkspaceSandbox
 
 
@@ -40,7 +42,8 @@ class AgentMessage:
 
 class AgentLoop:
     """
-    Standalone harness executing a controlled agent loop with ledger instrumentation.
+    Standalone harness executing a controlled agent loop with ledger instrumentation
+    and automated context budget compaction.
     """
 
     def __init__(
@@ -52,6 +55,12 @@ class AgentLoop:
         run_id: Optional[str] = None,
         max_turns: int = 10,
         max_tool_calls_per_turn: int = 5,
+        context_budget_tokens: int = 4096,
+        compaction_threshold: float = 0.75,
+        keep_recent_turns: int = 3,
+        enable_snapshots: bool = False,
+        snapshots_dir: Optional[Path] = None,
+        injected_compaction_summary: Optional[str] = None,
     ) -> None:
         self.provider = provider
         self.ledger = ledger
@@ -60,11 +69,25 @@ class AgentLoop:
         self.run_id = run_id or generate_run_id()
         self.max_turns = max_turns
         self.max_tool_calls_per_turn = max_tool_calls_per_turn
-        
+        self.context_budget_tokens = context_budget_tokens
+        self.compaction_threshold = compaction_threshold
+        self.keep_recent_turns = keep_recent_turns
+        self.enable_snapshots = enable_snapshots
+        self.injected_compaction_summary = injected_compaction_summary
+
+        self.compactor = Compactor(
+            provider=self.provider,
+            ledger=self.ledger,
+            snapshots_dir=snapshots_dir,
+            enable_snapshots=self.enable_snapshots,
+            keep_recent_turns=self.keep_recent_turns,
+        )
+
         self.messages: List[AgentMessage] = []
         self._msg_counter = 0
         self.turn = 0
         self.total_tool_calls = 0
+        self.compactions_performed = 0
 
     def next_message_id(self) -> str:
         self._msg_counter += 1
@@ -107,6 +130,8 @@ class AgentLoop:
                 task=task,
                 provider=self.provider.name,
                 model=self.provider.model,
+                budget_tokens=self.context_budget_tokens,
+                threshold=self.compaction_threshold,
                 simulation=self.provider.is_simulation,
             )
         )
@@ -118,8 +143,34 @@ class AgentLoop:
         termination_reason = "completed"
 
         while self.turn < self.max_turns:
+            # 3. Check context compaction before sending request
+            comp_res = self.compactor.compact_context(
+                messages=self.get_context_dicts(),
+                run_id=self.run_id,
+                turn=self.turn,
+                context_budget=self.context_budget_tokens,
+                compaction_threshold=self.compaction_threshold,
+                injected_summary=self.injected_compaction_summary,
+            )
+            if comp_res.compacted:
+                self.compactions_performed += 1
+                # Rebuild internal message list from compacted result
+                self.messages = [
+                    AgentMessage(
+                        id=m["id"],
+                        role=m["role"],
+                        content=m.get("content"),
+                        tool_calls=m.get("tool_calls"),
+                        tool_call_id=m.get("tool_call_id"),
+                    )
+                    for m in comp_res.messages
+                ]
+
+            # Compute context tokens and hashes
             context_dicts = self.get_context_dicts()
+            current_tokens, token_method = count_context_tokens(context_dicts)
             context_hash = compute_context_hash(context_dicts)
+
             request_payload = {
                 "model": self.provider.model,
                 "messages": context_dicts,
@@ -137,6 +188,8 @@ class AgentLoop:
                     model=self.provider.model,
                     request_hash=request_hash,
                     context_hash=context_hash,
+                    estimated_context_tokens=current_tokens,
+                    token_count_method=token_method,
                     simulation=self.provider.is_simulation,
                 )
             )
@@ -268,7 +321,7 @@ class AgentLoop:
                 self.turn += 1
                 continue
 
-            # Model responded with plain text content without tool calls -> turn done
+            # Plain text response without tool calls -> task finished
             self.add_message(role="assistant", content=response.content)
             self.turn += 1
             termination_reason = "completed"
@@ -285,6 +338,7 @@ class AgentLoop:
                 turn=self.turn,
                 total_turns=self.turn,
                 total_tool_calls=self.total_tool_calls,
+                compactions_performed=self.compactions_performed,
                 termination_reason=termination_reason,
                 status="completed" if termination_reason == "completed" else "stopped",
                 simulation=self.provider.is_simulation,
@@ -295,6 +349,7 @@ class AgentLoop:
             "run_id": self.run_id,
             "turns": self.turn,
             "total_tool_calls": self.total_tool_calls,
+            "compactions_performed": self.compactions_performed,
             "termination_reason": termination_reason,
             "messages": self.get_context_dicts(),
         }
