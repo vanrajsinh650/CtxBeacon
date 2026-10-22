@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from ctxbeacon.ledger import Ledger
+from ctxbeacon.render import render_compaction_diff
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -24,6 +25,33 @@ def build_parser() -> argparse.ArgumentParser:
         type=str,
         default="ledger/ledger.jsonl",
         help="Path to JSONL ledger file (default: ledger/ledger.jsonl)",
+    )
+
+    # Command: diff
+    diff_parser = subparsers.add_parser("diff", help="Show compaction diff before and after context summarization")
+    diff_parser.add_argument(
+        "--ledger",
+        type=str,
+        default="ledger/ledger.jsonl",
+        help="Path to JSONL ledger file (default: ledger/ledger.jsonl)",
+    )
+    diff_parser.add_argument(
+        "--turn",
+        type=int,
+        default=None,
+        help="Specific turn number to inspect",
+    )
+    diff_parser.add_argument(
+        "--event-id",
+        type=str,
+        default=None,
+        help="Specific compaction event ID to inspect",
+    )
+    diff_parser.add_argument(
+        "--budget",
+        type=int,
+        default=None,
+        help="Override configured context token budget",
     )
 
     return parser
@@ -44,6 +72,17 @@ def handle_validate(args: argparse.Namespace) -> int:
     return 0
 
 
+def handle_diff(args: argparse.Namespace) -> int:
+    output = render_compaction_diff(
+        ledger_path=args.ledger,
+        turn=args.turn,
+        event_id=args.event_id,
+        budget_override=args.budget,
+    )
+    sys.stdout.write(output + "\n")
+    return 0 if not output.startswith("Error:") else 1
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -54,6 +93,8 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     if args.subcommand == "validate":
         return handle_validate(args)
+    elif args.subcommand == "diff":
+        return handle_diff(args)
 
     return 0
 
